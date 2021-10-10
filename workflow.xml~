@@ -1,0 +1,121 @@
+<workflow-app xmlns="uri:oozie:workflow:0.2" name="usecase5-sqoophivelastvalue">
+    <start to="fork_node"/>
+    <action name="hiveact-1">
+        <shell xmlns="uri:oozie:shell-action:0.2">
+            <job-tracker>${jobTracker}</job-tracker>
+            <name-node>${nameNode}</name-node>
+ 	    <configuration>
+                <property>
+                    <name>mapred.job.queue.name</name>
+                    <value>${queueName}</value>
+                </property>
+            </configuration>
+            <exec>hivelastval.sh</exec>
+	    <argument>${external_hivetable}</argument>
+	    <file>${appPath}/hivelastval.sh</file>
+	    <capture-output/>
+        </shell>
+        <ok to="sqoop-1"/>
+        <error to="kill"/>
+  </action>
+    <action name="sqoop-1">
+        <sqoop xmlns="uri:oozie:sqoop-action:0.2">
+            <job-tracker>${jobTracker}</job-tracker>
+            <name-node>${nameNode}</name-node>
+            <prepare>
+                  <delete path="${sqooppath}"/>
+            </prepare>
+ 	    <configuration>
+                <property>
+                    <name>mapred.job.queue.name</name>
+                    <value>${queueName}</value>
+                </property>
+            </configuration>
+	    <arg>import</arg>
+	    <arg>--connect</arg>
+	    <arg>jdbc:mysql://${servername}/custdb?zeroDateTimeBehavior=convertToNull</arg>
+	    <arg>--driver</arg>
+	    <arg>com.mysql.jdbc.Driver</arg>
+	    <arg>--username</arg>
+	    <arg>root</arg>
+	    <arg>--password</arg>
+	    <arg>${pass}</arg>
+	    <arg>--table</arg>
+	    <arg>customer_lastmodified</arg>
+	    <arg>--target-dir</arg>
+	    <arg>${sqooppath}</arg>
+	    <arg>-m</arg>
+	    <arg>1</arg>
+	    <arg>--incremental</arg>
+	    <arg>lastmodified</arg>
+	    <arg>--check-column</arg>
+	    <arg>upddt</arg>
+	    <arg>--last-value</arg>
+	    <arg>${wf:actionData('hiveact-1')['lastval']}</arg>
+	    <arg>--append</arg>
+        </sqoop>
+	<ok to="fork_node"/>
+        <error to="kill"/>
+  </action>
+
+   <fork name = "fork_node">
+      <path start = "hiveact-2"/>
+      <path start = "spark-act"/>
+   </fork>
+
+    <action name="hiveact-2">
+        <shell xmlns="uri:oozie:shell-action:0.2">
+            <job-tracker>${jobTracker}</job-tracker>
+            <name-node>${nameNode}</name-node>
+ 	    <configuration>
+                <property>
+                    <name>mapred.job.queue.name</name>
+                    <value>${queueName}</value>
+                </property>
+            </configuration>
+            <exec>hivecopy.sh</exec>
+	    <argument>${sqooppath}</argument>
+	    <argument>${hivepath}</argument>
+	    <file>${appPath}/hivecopy.sh</file>
+	    <capture-output/>
+        </shell>
+        <ok to="join_node"/>
+        <error to="kill"/>
+  </action>
+    <action name="spark-act">
+        <shell xmlns="uri:oozie:shell-action:0.2">
+            <job-tracker>${jobTracker}</job-tracker>
+            <name-node>${nameNode}</name-node> 	    
+            <configuration>
+                <property>
+                    <name>mapred.job.queue.name</name>
+                    <value>${queueName}</value>
+                </property>
+            </configuration>
+            <exec>${sparkscript}</exec>
+            <file>${sparkscriptpath}</file>
+        </shell>
+        <ok to="join_node"/>
+        <error to="kill"/>
+    </action>
+
+<join name="join_node" to="hive-1"/>
+
+  <action name="hive-1">
+        <hive xmlns="uri:oozie:hive-action:0.2">
+           <job-tracker>${jobTracker}</job-tracker>
+            <name-node>${nameNode}</name-node>
+	    <job-xml>hive-site.xml</job-xml>
+            <script>${appPath}/hivescript.hql</script>
+            <param>INPUTPATH=${hivepath}</param>
+            <param>TBLNAME=${hivetable}</param>            
+            <param>EXTTBLNAME=${external_hivetable}</param>            
+        </hive>
+        <ok to="end"/>
+        <error to="kill"/>
+    </action>
+    <kill name="kill">
+        <message>Action failed, error message[${wf:errorMessage(wf:lastErrorNode())}]</message>
+    </kill>
+    <end name="end"/>
+</workflow-app>

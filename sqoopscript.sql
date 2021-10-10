@@ -1,0 +1,11 @@
+sqoop import \
+--connect:jdbc:mysql://${SERVERNM}:custdb?zeroDateTimeBehavior=convertToNull \
+--driver com.mysql.jdbc.driver \
+--username root \
+--password ${PASSWRD} \
+-m 1 \
+--target-dir ${SQOOPPTH} \
+--incremental lastmodified \
+--check-column uppdt \
+--last-value ${LASTVALUE} \
+--append;
